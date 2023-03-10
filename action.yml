@@ -17,6 +17,13 @@ inputs:
   azure_environment:
     description: "Azure Environment"
     required: true
+  terraform_action:
+    description: "Terraform action that must be executed. E.g. plan|apply|init..."
+    required: true
+  aks_name:
+    description: "AKS name"
+    required: true
+
 
 runs:
   using: "composite"
@@ -39,6 +46,27 @@ runs:
           restore-keys: |
             terraform-${{ inputs.dir }}
 
+      - name: Generate kubeconfig (with kubelogin)
+        shell: bash
+        run: |
+          echo "🎓 Configure kubeconfig"
+
+          aks_resource_group=$(az aks list -o tsv --query "[?contains(name,'${{ inputs.aks_name }}')].resourceGroup" 2>/dev/null | tr -d '\r')
+          if [[ -z "$aks_resource_group" ]]; then
+            echo "❌ aks resource group not found"
+            exit 1
+          fi
+          echo "✅ Calculated aks resource group"
+
+          export KUBECONFIG_PATH=~/.kube
+          az aks get-credentials -g ${aks_resource_group} -n ${{ inputs.aks_name }} -f ${KUBECONFIG_PATH}/config-${{ inputs.aks_name }} --only-show-errors --overwrite-existing
+          echo "✅ Get kubernetes credentials via az aks get-credentials"
+
+          echo "⏳ Convert kubeconfig via kubelogin"
+          export KUBECONFIG=${KUBECONFIG_PATH}/config-${{ inputs.aks_name }}
+          kubelogin convert-kubeconfig -l azurecli
+          echo "✅ Kubeconfig converted correctly via kubelogin and saved into ${KUBECONFIG_PATH}/config-${{ inputs.aks_name }}"
+
       - name: Terraform plan
         shell: bash
         run: |
@@ -52,4 +80,9 @@ runs:
 
           cd ${{ inputs.dir }}
 
-          bash terraform.sh plan ${{ inputs.azure_environment }} -lock-timeout=300s -lock=false
+          echo "[INFO] 🚀 Run terraform ${{ inputs.terraform_action }} + kubernetes"
+          if [[ "${{ inputs.terraform_action }}" == "apply" ]]; then
+            bash terraform.sh ${{ inputs.terraform_action }} ${{ inputs.azure_environment }} -auto-approve -lock-timeout=300s -lock=false
+          else
+            bash terraform.sh ${{ inputs.terraform_action }} ${{ inputs.azure_environment }} -lock-timeout=300s -lock=false
+          fi
