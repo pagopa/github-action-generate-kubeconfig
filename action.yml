@@ -31,7 +31,7 @@ runs:
       - name: Generate kubeconfig (with kubelogin)
         shell: bash
         run: |
-          echo "🎓 Configure kubeconfig"
+          echo "📐 Configure kubeconfig"
 
           aks_resource_group=$(az aks list -o tsv --query "[?contains(name,'${{ inputs.aks_name }}')].resourceGroup" 2>/dev/null | tr -d '\r')
           if [[ -z "$aks_resource_group" ]]; then
